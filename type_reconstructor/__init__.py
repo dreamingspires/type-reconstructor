@@ -1,6 +1,5 @@
-from typing import Callable, Dict, List, Tuple, Union, Type, Optional#, get_args, get_origin
+from typing import Callable, Dict, List, Tuple, Union, Type, Optional, get_args, get_origin
 from collections.abc import Callable as CollectionsCallable
-from typing_extensions import get_args, get_origin
 
 def _get_origin_advanced(tp: type):
     origin = get_origin(tp)
@@ -28,7 +27,19 @@ def extract_element(start_type: type, condition_callback: Callable[[ElementType]
     Function that takes extracted element and wraps in outer types
     """
     EllipsisType = type(...)
-    TypeReconstructor = Union[EllipsisType, type, Tuple[type, List['TypeReconstructor']]]
+    TypeReconstructor = Union[
+        EllipsisType, 
+        type,
+        Tuple[
+            type, 
+            List[
+                Union[
+                    'TypeReconstructor', 
+                    List['TypeReconstructor']
+                ]
+            ]
+        ]
+    ]
     def get_type_reconstructor(tp: type) -> Tuple[TypeReconstructor, Optional[ElementType]]:
         args = list(get_args(tp))
         origin = _get_origin_advanced(tp)
@@ -41,13 +52,40 @@ def extract_element(start_type: type, condition_callback: Callable[[ElementType]
             possible_elements = []
             new_args = []
             for arg in args:
-                # TODO Allow for case where arg is a list in callable
-                type_reconstructor, element = get_type_reconstructor(arg)
+                if isinstance(arg, list):
+                    type_reconstructor = []
+                    possible_sub_elements = []
+                    for i in arg:
+                        sub_type_reconstructor, sub_element = get_type_reconstructor(i)
+                        type_reconstructor += [sub_type_reconstructor]
+                        if sub_element is not None:
+                            possible_sub_elements += [sub_element]
+
+                    if len(possible_sub_elements)>1:
+                        sub_exclusive = []
+                        for i in possible_sub_elements:
+                            if i not in sub_exclusive:
+                                sub_exclusive += [i]
+                        if len(sub_exclusive)> 1:
+                            raise ValueError('More than one extraction sub element found')
+                        else:
+                            element = possible_sub_elements[0]
+                    elif len(possible_sub_elements) == 1:
+                        element = possible_sub_elements[0]
+                    else:
+                        element = None
+
+                else:
+                    type_reconstructor, element = get_type_reconstructor(arg)
                 if element is not None:
                     possible_elements += [element]
                 new_args += [type_reconstructor]
             if len(possible_elements)>1:
-                if len(set(possible_elements))> 1:
+                exclusive = []
+                for i in possible_elements:
+                    if i not in exclusive:
+                        exclusive += [i]
+                if len(exclusive)> 1:
                     raise ValueError('More than one extraction element found')
                 else:
                     relevant_element = possible_elements[0]
@@ -57,8 +95,8 @@ def extract_element(start_type: type, condition_callback: Callable[[ElementType]
                 relevant_element = None
             return (origin, new_args), relevant_element
 
-    def get_reconstruct_type(type_reconstructor: TypeReconstructor):
-        def reconstruct_type(tp: ElementType):                
+    def get_reconstruct_type(type_reconstructor: TypeReconstructor) -> Callable[[type], type]:
+        def reconstruct_type(tp: ElementType) -> type:                
             def func_type_inner(current_type_reconstructor: TypeReconstructor) -> type:
                 if isinstance(current_type_reconstructor, EllipsisType):
                     return tp
@@ -67,7 +105,10 @@ def extract_element(start_type: type, condition_callback: Callable[[ElementType]
                     args = current_type_reconstructor[1]
                     new_args = []
                     for arg in args:
-                        new_arg = func_type_inner(arg)
+                        if isinstance(arg, list):
+                            new_arg = [func_type_inner(i) for i in arg]
+                        else:
+                            new_arg = func_type_inner(arg) #type:ignore
                         new_args += [new_arg]
                     if hasattr(origin, '__getitem__'):
                         return origin[tuple(new_args)] #type:ignore
