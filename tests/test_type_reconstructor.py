@@ -75,6 +75,7 @@ class TestTypeReconstructor:
                 return False
 
         string, reconstruct_type = extract_element(test_type, condition)
+        assert reconstruct_type(str) == Callable[[str], bool]
 
     async def test_generic_origin(self):
         string = TypeVar('string')
@@ -85,7 +86,6 @@ class TestTypeReconstructor:
             return test == bool
         string, reconstruct_type = extract_element(test_type, condition)
         assert reconstruct_type(str) == Base[Base[str]]
-        print(reconstruct_type(str))
 
     async def test_generic_in_type(self):
         string = TypeVar('string')
@@ -97,3 +97,11 @@ class TestTypeReconstructor:
 
         string, reconstruct_type = extract_element(test_type, condition)
         assert reconstruct_type(str) == List[str]
+
+    async def test_callable_no_args(self):
+        test_type = Callable[[], bool]
+        def condition(test: type) -> bool:
+            return test == bool
+
+        string, reconstruct_type = extract_element(test_type, condition)
+        assert reconstruct_type(str) == Callable[[], str]
