@@ -40,10 +40,11 @@ def extract_element(start_type: type, condition_callback: Callable[[ElementType]
             ]
         ]
     ]
+
     def get_type_reconstructor(tp: type) -> Tuple[TypeReconstructor, Optional[ElementType]]:
         args = list(get_args(tp))
         origin = _get_origin_advanced(tp)
-        if args == [] or origin is None:
+        if origin is None:
             if condition_callback(tp):
                 return ..., tp
             else:
@@ -101,16 +102,16 @@ def extract_element(start_type: type, condition_callback: Callable[[ElementType]
                 if isinstance(current_type_reconstructor, EllipsisType):
                     return tp
                 elif isinstance(current_type_reconstructor, tuple):
-                    origin = current_type_reconstructor[0]
-                    args = current_type_reconstructor[1]
-                    new_args = []
+                    origin: type = current_type_reconstructor[0]
+                    args: List[Union[TypeReconstructor, List[TypeReconstructor]]] = current_type_reconstructor[1] #type:ignore
+                    new_args: List[Union[type, List[type]]] = []
                     for arg in args:
                         if isinstance(arg, list):
-                            new_arg = [func_type_inner(i) for i in arg]
+                            new_arg: Union[type, List[type]] = [func_type_inner(i) for i in arg]
                         else:
-                            new_arg = func_type_inner(arg) #type:ignore
+                            new_arg: Union[type, List[type]] = func_type_inner(arg)
                         new_args += [new_arg]
-                    if hasattr(origin, '__getitem__'):
+                    if hasattr(origin, '__getitem__') or hasattr(origin, '__class_getitem__'):
                         return origin[tuple(new_args)] #type:ignore
                     else:
                         raise ValueError('Origin invalid')
